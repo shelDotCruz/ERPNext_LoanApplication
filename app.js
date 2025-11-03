@@ -273,7 +273,7 @@ async function saveSignature() {
         notes,
         signatureData: signatureDataURL,
         timestamp: new Date().toISOString(),
-        synced: false,
+        synced: 0, // 0 = not synced, 1 = synced
         syncAttempts: 0
     };
     
@@ -339,47 +339,25 @@ function getAllSignatures() {
     });
 }
 
-// FIXED: Proper IndexedDB query for pending signatures
+// FIXED: Proper IndexedDB query for pending signatures (number-based)
 function getPendingSignatures() {
     return new Promise((resolve, reject) => {
         const transaction = db.transaction([CONFIG.STORE_NAME], 'readonly');
         const objectStore = transaction.objectStore(CONFIG.STORE_NAME);
         const index = objectStore.index('synced');
         
-        // Method 1: Using IDBKeyRange (more efficient)
-        try {
-            const keyRange = IDBKeyRange.only(false);
-            const request = index.getAll(keyRange);
-            
-            request.onsuccess = () => {
-                resolve(request.result || []);
-            };
-            
-            request.onerror = () => {
-                reject(request.error);
-            };
-        } catch (error) {
-            // Fallback: If IDBKeyRange fails, use cursor method
-            console.log('Using cursor fallback method');
-            const results = [];
-            const cursorRequest = index.openCursor();
-            
-            cursorRequest.onsuccess = (event) => {
-                const cursor = event.target.result;
-                if (cursor) {
-                    if (cursor.value.synced === false) {
-                        results.push(cursor.value);
-                    }
-                    cursor.continue();
-                } else {
-                    resolve(results);
-                }
-            };
-            
-            cursorRequest.onerror = () => {
-                reject(cursorRequest.error);
-            };
-        }
+        // Use IDBKeyRange with number 0 (not synced)
+        const keyRange = IDBKeyRange.only(0);
+        const request = index.getAll(keyRange);
+        
+        request.onsuccess = () => {
+            resolve(request.result || []);
+        };
+        
+        request.onerror = () => {
+            console.error('❌ Error getting pending signatures:', request.error);
+            reject(request.error);
+        };
     });
 }
 
@@ -471,7 +449,7 @@ async function syncAllSignatures() {
             
             if (success) {
                 await updateSignature(signature.id, {
-                    synced: true,
+                    synced: 1, // 1 = synced
                     syncedAt: new Date().toISOString()
                 });
                 successCount++;
