@@ -5,7 +5,7 @@
 // Configuration
 const CONFIG = {
     // IMPORTANT: Replace this with your Google Apps Script Web App URL
-    GOOGLE_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbyIpzWfwmB5uVGQFi5l7RumRqk-F4epCa-z0XTbT_RvJNgW-MsQT_senLewqeufhxly/exec',
+    GOOGLE_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzXJpPcpbUaQ9N-XT_fSjVjfpv3tusgAyyc2G_BQaD0O62vay-d40eY0EIvuHSTSQU/exec',
     
     // IndexedDB Configuration
     DB_NAME: 'SignatureAppDB',
