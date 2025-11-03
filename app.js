@@ -1,5 +1,5 @@
 // =====================================================================
-// OFFLINE SIGNATURE CAPTURE APP - Main Application Logic
+// OFFLINE SIGNATURE CAPTURE APP - Main Application Logic (FIXED)
 // =====================================================================
 
 // Configuration
@@ -302,7 +302,7 @@ async function saveSignature() {
 }
 
 // =====================================================================
-// INDEXEDDB OPERATIONS
+// INDEXEDDB OPERATIONS (FIXED)
 // =====================================================================
 
 function saveToIndexedDB(signature) {
@@ -339,20 +339,47 @@ function getAllSignatures() {
     });
 }
 
+// FIXED: Proper IndexedDB query for pending signatures
 function getPendingSignatures() {
     return new Promise((resolve, reject) => {
         const transaction = db.transaction([CONFIG.STORE_NAME], 'readonly');
         const objectStore = transaction.objectStore(CONFIG.STORE_NAME);
         const index = objectStore.index('synced');
-        const request = index.getAll(false);
         
-        request.onsuccess = () => {
-            resolve(request.result);
-        };
-        
-        request.onerror = () => {
-            reject(request.error);
-        };
+        // Method 1: Using IDBKeyRange (more efficient)
+        try {
+            const keyRange = IDBKeyRange.only(false);
+            const request = index.getAll(keyRange);
+            
+            request.onsuccess = () => {
+                resolve(request.result || []);
+            };
+            
+            request.onerror = () => {
+                reject(request.error);
+            };
+        } catch (error) {
+            // Fallback: If IDBKeyRange fails, use cursor method
+            console.log('Using cursor fallback method');
+            const results = [];
+            const cursorRequest = index.openCursor();
+            
+            cursorRequest.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    if (cursor.value.synced === false) {
+                        results.push(cursor.value);
+                    }
+                    cursor.continue();
+                } else {
+                    resolve(results);
+                }
+            };
+            
+            cursorRequest.onerror = () => {
+                reject(cursorRequest.error);
+            };
+        }
     });
 }
 
@@ -364,6 +391,11 @@ function updateSignature(id, updates) {
         
         request.onsuccess = () => {
             const signature = request.result;
+            if (!signature) {
+                reject(new Error('Signature not found'));
+                return;
+            }
+            
             Object.assign(signature, updates);
             
             const updateRequest = objectStore.put(signature);
@@ -414,7 +446,14 @@ async function syncAllSignatures() {
         return;
     }
     
-    const pendingSignatures = await getPendingSignatures();
+    let pendingSignatures;
+    try {
+        pendingSignatures = await getPendingSignatures();
+    } catch (error) {
+        console.error('Error getting pending signatures:', error);
+        showMessage('❌ Error loading pending signatures', 'error');
+        return;
+    }
     
     if (pendingSignatures.length === 0) {
         showMessage('✅ All signatures synced!', 'success');
@@ -515,10 +554,14 @@ function setupAutoSync() {
     syncInterval = setInterval(async () => {
         if (navigator.onLine) {
             console.log('🔄 Auto-sync triggered...');
-            const pendingCount = (await getPendingSignatures()).length;
-            
-            if (pendingCount > 0) {
-                await syncAllSignatures();
+            try {
+                const pendingCount = (await getPendingSignatures()).length;
+                
+                if (pendingCount > 0) {
+                    await syncAllSignatures();
+                }
+            } catch (error) {
+                console.error('Auto-sync error:', error);
             }
         }
     }, CONFIG.AUTO_SYNC_INTERVAL);
@@ -531,7 +574,14 @@ function setupAutoSync() {
 // =====================================================================
 
 async function loadPendingSignatures() {
-    const pendingSignatures = await getPendingSignatures();
+    let pendingSignatures;
+    try {
+        pendingSignatures = await getPendingSignatures();
+    } catch (error) {
+        console.error('Error loading pending signatures:', error);
+        return;
+    }
+    
     const pendingList = document.getElementById('pendingList');
     const pendingSection = document.getElementById('pendingSection');
     
@@ -565,11 +615,15 @@ async function loadPendingSignatures() {
 }
 
 async function updateStats() {
-    const allSignatures = await getAllSignatures();
-    const pendingSignatures = await getPendingSignatures();
-    
-    document.getElementById('savedCount').textContent = allSignatures.length;
-    document.getElementById('pendingCount').textContent = pendingSignatures.length;
+    try {
+        const allSignatures = await getAllSignatures();
+        const pendingSignatures = await getPendingSignatures();
+        
+        document.getElementById('savedCount').textContent = allSignatures.length;
+        document.getElementById('pendingCount').textContent = pendingSignatures.length;
+    } catch (error) {
+        console.error('Error updating stats:', error);
+    }
 }
 
 function showMessage(message, type) {
